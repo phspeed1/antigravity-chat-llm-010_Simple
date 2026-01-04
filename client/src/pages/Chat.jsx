@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../AuthContext';
-import UploadModal from '../components/UploadModal';
+import { Link } from 'react-router-dom';
 
 export default function Chat() {
     const { user, logout } = useAuth();
@@ -12,7 +12,6 @@ export default function Chat() {
     const [editingSessionId, setEditingSessionId] = useState(null);
     const [editTitle, setEditTitle] = useState('');
     const [model, setModel] = useState('gpt-4o-mini');
-    const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
     const inputRef = useRef(null);
 
@@ -255,27 +254,16 @@ export default function Chat() {
                 </div>
 
                 <div className="p-4 border-t border-gray-700">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2">
                         {user?.avatar && (
                             <img src={user.avatar} alt="User" className="w-8 h-8 rounded-full" />
                         )}
                         <span className="truncate text-sm font-medium">{user?.name}</span>
                     </div>
-                    <div className="flex gap-2">
-                        <button onClick={() => setUploadModalOpen(true)} className="flex-1 text-xs bg-gray-700 hover:bg-gray-600 py-1 rounded">
-                            Upload
-                        </button>
-                        <button onClick={logout} className="flex-1 text-xs text-red-400 hover:text-red-300 border border-red-900/30 hover:bg-red-900/20 py-1 rounded">
-                            Sign Out
-                        </button>
-                    </div>
-                    <div className="mt-2 text-center">
-                        <a href="/profile" className="text-xs text-gray-500 hover:text-white">Profile Settings</a>
-                    </div>
                 </div>
             </div>
 
-            {uploadModalOpen && <UploadModal isOpen={uploadModalOpen} onClose={() => setUploadModalOpen(false)} />}
+
 
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col min-w-0">

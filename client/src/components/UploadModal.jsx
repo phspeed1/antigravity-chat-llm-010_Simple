@@ -106,7 +106,7 @@ export default function UploadModal({ isOpen, onClose }) {
                                 className={`px-4 py-2 bg-indigo-600 text-white rounded-md font-medium text-sm
                                     ${(!file || uploading) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'}`}
                             >
-                                {uploading ? 'Start...' : 'Upload'}
+                                {uploading ? 'Adding...' : 'Add File'}
                             </button>
                         </div>
                         {message && (

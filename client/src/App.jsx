@@ -3,7 +3,9 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Chat from './pages/Chat';
+import Materials from './pages/Materials';
 import AuthCallback from './AuthCallback';
+import Navigation from './components/Navigation';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -12,17 +14,22 @@ function PrivateRoute({ children }) {
 }
 
 function App() {
+
   return (
     <AuthProvider>
       <Router>
         <div className="flex flex-col h-screen bg-gray-50">
-          <header className="bg-white shadow-sm border-b z-20 relative">
-            <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-              <h1 className="text-xl font-bold text-indigo-600 tracking-tight">Robin's LLM/RAG/Agent Lab</h1>
-            </div>
-          </header>
+          <Navigation />
           <div className="flex-1 overflow-hidden relative">
             <Routes>
+              <Route
+                path="/materials"
+                element={
+                  <PrivateRoute>
+                    <Materials />
+                  </PrivateRoute>
+                }
+              />
               <Route path="/login" element={<Login />} />
               <Route path="/auth-callback" element={<AuthCallback />} />
               <Route
@@ -42,6 +49,7 @@ function App() {
                 }
               />
               <Route path="/" element={<Navigate to="/chat" />} />
+              <Route path="*" element={<div className="p-4">404 - Page Not Found</div>} />
             </Routes>
           </div>
         </div>
