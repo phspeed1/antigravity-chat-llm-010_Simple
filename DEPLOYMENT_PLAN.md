@@ -1,111 +1,121 @@
+# AntiGravity 프로젝트 Google Cloud 배포 계획
 
-# AntiGravity 프로젝트 Google Cloud (GCP) 배포 계획
+이 문서는 AntiGravity 스택(React, Node.js, Python FastAPI)을 Google Cloud Platform (GCP)의 Google Compute Engine (GCE)과 Docker Compose를 사용하여 배포하기 위한 전략 및 가이드입니다. 이미 생성된 인스턴스 정보를 기반으로 작성되었습니다.
 
-AWS 대신 **Google Cloud Platform (GCP)**를 사용하여 배포하는 전략입니다. 프로젝트가 3개의 서비스(Frontend, Node.js Backend, Python LLM Service)로 구성되어 있으므로, 관리의 편의성을 위해 **Google Compute Engine (GCE)**를 활용한 Docker Compose 배포 방식을 권장합니다.
+## 1. 프로젝트 구성 정보 (Configuration)
+- **GCP 프로젝트 ID**: `project-e063da80-f7b1-4dbd-bba`
+- **리전 (Region)**: `asia-northeast3` (서울)
+- **인스턴스 이름**: `antigravity-server`
+- **외부 IP 주소 (Static IP)**: `34.64.150.15`
+- **계정**: `barcornsuck@gmail.com`
 
-## 1. 아키텍처 개요
-- **Frontend**: React (Vite) - Nginx 컨테이너로 정적 서빙.
-- **Backend**: Node.js (Express) - 인증 및 사용자 관리 API.
-- **LLM Service**: Python (FastAPI) - RAG 및 Vision 처리 (메모리 사용량 높음).
-- **Database**: Supabase (PostgreSQL), Pinecone (Vector DB) - *GCP 외부 서비스이므로 그대로 유지.*
+## 2. 아키텍처 개요 (Architecture)
+애플리케이션은 3개의 Docker 컨테이너로 구성되며 Docker Compose로 관리됩니다.
 
-## 2. GCP 환경 구성 권장 사항
+1.  **Frontend (`client`)**:
+    -   **기술 스택**: React (Vite), Nginx
+    -   **포트**: 80 (HTTP)
+    -   **역할**: 사용자 인터페이스 제공. Nginx가 정적 파일을 서빙하고 라우팅을 담당합니다.
+2.  **Backend (`server`)**:
+    -   **기술 스택**: Node.js (Express, Prisma)
+    -   **포트**: 3000
+    -   **역할**: Google OAuth 인증, 사용자 관리, 채팅 세션 기록 (Supabase PostgreSQL 연동).
+3.  **LLM Service (`llm_service`)**:
+    -   **기술 스택**: Python (FastAPI)
+    -   **포트**: 8000
+    -   **역할**: RAG 파이프라인 및 PDF 처리 엔진.
+    -   **PDF 처리 방식 (Hybrid)**:
+        -   **텍스트**: `PyMuPDF (fitz)`를 사용하여 직접 추출.
+        -   **이미지/도표**: 이미지를 추출하여 **Supabase Storage**에 임시 업로드 -> **GPT-4o-mini Vision**으로 분석 -> 분석 후 즉시 삭제. (로컬 디스크 의존성 없음)
 
-### A. Google Compute Engine (VM)
-- **머신 유형**: **e2-standard-2** 권장
-  - 사양: 2 vCPU, 8GB 메모리
-  - 이유: `py-zerox` 및 PDF 이미지 변환 작업은 메모리를 많이 소모합니다. 4GB 이하(e2-medium)에서는 OOM(Out of Memory) 에러가 발생할 위험이 높습니다.
-- **OS**: Ubuntu 22.04 LTS (x86/64)
-- **디스크**: Balanced Persistent Disk 30GB 이상
+## 3. 인프라 사양 (Infrastructure)
+이미 생성된 VM의 사양은 다음과 같습니다.
 
-### B. 네트워크 및 보안
-1. **고정 IP 주소 (Static External IP)**: 서버 재시작 시 IP가 바뀌지 않도록 예약합니다.
-2. **방화벽 규칙 (VPC Firewall)**:
-   - `tcp:80`, `tcp:443` (HTTP/HTTPS) 허용.
-   - 개발/테스트 목적이라면 `tcp:3000`, `tcp:8000`도 열 수 있으나, Nginx Reverse Proxy를 통해 80/443 포트로 통합하는 것이 보안상 좋습니다.
+-   **머신 유형**: `e2-standard-2`
+    -   **CPU**: 2 vCPUs
+    -   **메모리**: 8 GB
+    -   **선정 이유**: PDF 이미지 변환 및 Vision API 처리는 메모리 사용량이 많습니다. 4GB 이하(e2-medium) 모델 사용 시 OOM(메모리 부족) 현상이 발생할 수 있어 8GB 모델이 권장됩니다.
+-   **OS**: Ubuntu 22.04 LTS
+-   **방화벽**: HTTP(80), HTTPS(443) 트래픽 허용 필수.
 
-## 3. 배포 준비 (Local Steps)
+## 4. 배포 절차 (Deployment Steps)
 
-### A. 환경 변수 정리
-GCP VM에 업로드할 `.env.production` 파일을 준비합니다.
-- `JWT_SECRET`: 강력한 난수로 변경.
-- `CLIENT_URL`: GCP VM의 고정 IP 또는 연결할 도메인 주소.
-- `OPENAI_API_KEY` 등 외부 키 확인.
-
-### B. Docker 구성 (Docker Compose)
-Google Cloud VM 하나에 3개의 컨테이너를 효율적으로 띄우기 위해 Docker Compose를 사용합니다.
-
-**docker-compose.yml 예시:**
-```yaml
-version: '3.8'
-services:
-  # Nginx Reverse Proxy & Frontend
-  web:
-    build: ./client
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - api
-      - llm
-  
-  # Node.js Backend
-  api:
-    build: ./server
-    env_file: ./server/.env
-    restart: always
-
-  # Python LLM Service
-  llm:
-    build: ./llm_service
-    env_file: ./llm_service/.env
-    # Linux 시스템 패키지(poppler-utils 등) 설치를 위해 Dockerfile 수정 필수
-    restart: always
-    volumes:
-      - ./llm_service/documents:/documents
+### 단계 1: 서버 접속 (SSH)
+로컬 터미널에서 아래 명령어로 생성된 VM에 접속합니다.
+```bash
+gcloud compute ssh antigravity-server --project=project-e063da80-f7b1-4dbd-bba --zone=asia-northeast3-a
 ```
 
-## 4. 상세 배포 절차 (Action Plan)
+### 단계 2: 기본 설정 및 코드 다운로드
+VM 내부에서 실행하는 명령어입니다.
 
-### 단계 1: GCP VM 인스턴스 생성
-1. Google Cloud Console > Compute Engine > VM 인스턴스 만들기.
-2. 리전: `asia-northeast3` (서울) 권장.
-3. 머신 구성: `e2-standard-2`.
-4. 부팅 디스크: Ubuntu 22.04 LTS.
-5. 방화벽: 'HTTP 트래픽 허용', 'HTTPS 트래픽 허용' 체크.
+1.  **필수 도구 설치 (Docker & Git)**
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y docker.io docker-compose git
+    ```
 
-### 단계 2: 서버 환경 설정
-VM에 SSH로 접속하여 필수 도구를 설치합니다.
+2.  **프로젝트 클론**
+    ```bash
+    # Git 저장소 주소는 실제 주소로 변경해주세요. (예: GitHub, GitLab 등)
+    git clone <YOUR_GIT_REPOSITORY_URL> app
+    cd app
+    ```
+
+### 단계 3: 환경 변수 설정 (Environment Configuration)
+보안상 `.env` 파일은 저장소에 포함되지 않았으므로, 서버에서 **직접 생성**해야 합니다.
+
+1.  **Backend 환경 변수** (`server/.env`)
+    ```bash
+    nano server/.env
+    ```
+    ```env
+    PORT=3000
+    DATABASE_URL="postgresql://..."
+    # 실제 운영용 비밀 키를 생성하여 입력하세요.
+    SESSION_SECRET="<강력한_랜덤_문자열>"
+    # 클라이언트 URL은 생성한 고정 IP를 사용합니다.
+    CLIENT_URL="http://34.64.150.15"
+    ```
+
+2.  **LLM Service 환경 변수** (`llm_service/.env`)
+    ```bash
+    nano llm_service/.env
+    ```
+    ```env
+    OPENAI_API_KEY="sk-..."
+    SUPABASE_URL="https://..."
+    SUPABASE_KEY="<SERVICE_ROLE_KEY>"
+    # 중요: Server의 SESSION_SECRET과 정확히 일치해야 합니다.
+    JWT_SECRET="<SESSION_SECRET과_동일한_값>"
+    # CORS 허용 출처 설정
+    ALLOWED_ORIGINS="http://34.64.150.15,http://localhost"
+    ```
+
+### 단계 4: 서비스 빌드 및 실행
+Docker Compose를 사용하여 모든 서비스를 빌드하고 백그라운드에서 실행합니다.
+
 ```bash
-# Docker 및 Docker Compose 설치
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
-# (Docker 공식 설치 스크립트 활용 권장)
-...
-```
-
-### 단계 3: 코드 배포
-1. git clone으로 프로젝트를 VM에 내려받습니다.
-2. 로컬에서 준비한 `.env` 파일들을 각 디렉토리(`client/`, `server/`, `llm_service/`)에 생성/복사합니다.
-
-### 단계 4: 서비스 실행
-```bash
-# 백그라운드 실행
 sudo docker-compose up -d --build
 ```
 
-## 5. 중요 고려 사항 (GCP 특화)
+### 단계 5: 작동 확인
+브라우저 주소창에 `http://34.64.150.15` 를 입력하여 접속되는지 확인합니다.
 
-- **Cloud Storage (GCS) 연동 고려**: 현재 로컬 파일 시스템을 임시로 사용하고 있으나, PDF 처리 중 생성되는 임시 파일이 많아지면 디스크 용량이 찰 수 있습니다. 주기적으로 정리하는 크론(Cron) 작업이나 GCS를 활용하는 로직 변경을 고려하세요.
-- **비용 관리**: `e2-standard-2`는 월 약 $50~60 수준(서울 리전 기준)의 비용이 발생할 수 있습니다. 비용 절감이 중요하다면 **Spot VM (Preemptible)**을 고려할 수 있으나, 서버가 불시에 중단될 수 있습니다.
-- **SSL 인증서**: 도메인을 구매하여 연결하고, Nginx 컨테이너 내에서 **Certbot**을 실행하여 Let's Encrypt 무료 인증서를 적용해야 합니다.
+## 5. 유지보수 및 모니터링
+-   **로그 확인**: `sudo docker-compose logs -f`
+-   **서비스 재시작**: `sudo docker-compose restart`
+-   **코드 업데이트 후 재배포**:
+    ```bash
+    git pull
+    sudo docker-compose up -d --build
+    ```
+-   **디스크 정리**: 배포가 반복되면 미사용 이미지가 쌓일 수 있습니다.
+    ```bash
+    sudo docker system prune -f
+    ```
 
-## 6. 대안: Cloud Run (Serverless)
-서버 관리 없이 배포하려면 **Cloud Run**을 사용할 수 있습니다.
-- **장점**: 트래픽이 없을 때 비용 0원, 자동 스케일링.
-- **단점**: 
-  - 3개의 서비스(Front, Back, LLM)를 각각 따로 배포하고 연동해야 하므로 초기 설정이 복잡함.
-  - Python LLM 서비스의 경우 긴 처리 시간(Timeout)과 높은 메모리 설정이 필요하여 설정 튜닝이 까다로울 수 있음.
-  - `py-zerox`와 같은 무거운 라이브러리는 컨테이너 콜드 스타트(Cold Start) 시 지연을 유발할 수 있음.
-
-**결론**: 현재 단계에서는 **GCE + Docker Compose** 방식이 가장 빠르고 안정적인 배포 방법입니다.
+## 6. 향후 과제 (SSL 적용)
+현재는 HTTP(80)로 배포됩니다. 운영 환경을 위해서는 SSL(HTTPS) 적용이 필요합니다.
+1.  도메인을 구매하여 `34.64.150.15`로 A 레코드 연결.
+2.  Nginx 컨테이너 설정에 Certbot을 추가하거나, 앞단에 Nginx Proxy Manager 컨테이너를 두어 Let's Encrypt 인증서를 발급받는 것을 권장합니다.

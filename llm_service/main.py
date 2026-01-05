@@ -18,7 +18,7 @@ from fastapi import BackgroundTasks
 import io
 import tempfile
 import pypdf
-from pyzerox import zerox
+
 import markdown
 from bs4 import BeautifulSoup
 import asyncio
@@ -39,10 +39,14 @@ async def log_requests(request, call_next):
         raise
 
 # CORS
-origins = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-]
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
+if allowed_origins_str:
+    origins = allowed_origins_str.split(",")
+else:
+    origins = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
