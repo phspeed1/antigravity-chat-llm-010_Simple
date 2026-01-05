@@ -4,6 +4,10 @@ import { Link } from 'react-router-dom';
 
 export default function Chat() {
     const { user, logout } = useAuth();
+    const API_BASE_URL = window.location.hostname === 'localhost'
+        ? 'http://localhost:8000'
+        : `http://${window.location.hostname}:8000`;
+
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -34,7 +38,7 @@ export default function Chat() {
     const fetchSessions = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/sessions', {
+            const res = await fetch(`${API_BASE_URL}/sessions`, {
                 headers: { 'Authorization': `Bearer ${token} ` }
             });
             const data = await res.json();
@@ -50,7 +54,7 @@ export default function Chat() {
     const fetchMessages = async (sessionId) => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/sessions/${sessionId}/messages`, {
+            const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/messages`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await res.json();
@@ -63,7 +67,7 @@ export default function Chat() {
     const handleCreateSession = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/sessions', {
+            const res = await fetch(`${API_BASE_URL}/sessions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -91,7 +95,7 @@ export default function Chat() {
         }
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/sessions/${editingSessionId}`, {
+            const res = await fetch(`${API_BASE_URL}/sessions/${editingSessionId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -117,7 +121,7 @@ export default function Chat() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/sessions/${sessionId}`, {
+            const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -147,7 +151,7 @@ export default function Chat() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/chat', {
+            const res = await fetch(`${API_BASE_URL}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

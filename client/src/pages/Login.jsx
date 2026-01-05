@@ -16,7 +16,10 @@ export default function Login() {
     };
 
     const handleGoogleLogin = () => {
-        window.location.href = 'http://localhost:3000/auth/google';
+        const API_BASE_URL = window.location.hostname === 'localhost'
+            ? 'http://localhost:3000'
+            : `http://${window.location.hostname}:3000`;
+        window.location.href = `${API_BASE_URL}/auth/google`;
     };
 
     const handleSubmit = async (e) => {
@@ -25,7 +28,12 @@ export default function Login() {
         const endpoint = isSignup ? '/signup' : '/login';
 
         try {
-            const res = await fetch(`http://localhost:3000/auth${endpoint}`, {
+            // Determine API URL based on current location
+            const API_BASE_URL = window.location.hostname === 'localhost'
+                ? 'http://localhost:3000'
+                : `http://${window.location.hostname}:3000`;
+
+            const res = await fetch(`${API_BASE_URL}/auth${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)

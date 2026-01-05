@@ -21,7 +21,11 @@ export function AuthProvider({ children }) {
         try {
             const token = localStorage.getItem('token');
             if (token) {
-                const res = await fetch('http://localhost:3000/auth/me', {
+                const API_BASE_URL = window.location.hostname === 'localhost'
+                    ? 'http://localhost:3000'
+                    : `http://${window.location.hostname}:3000`;
+
+                const res = await fetch(`${API_BASE_URL}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
