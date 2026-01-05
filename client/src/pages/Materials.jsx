@@ -12,6 +12,17 @@ export default function Materials() {
         fetchAllDocuments();
     }, []);
 
+    // Polling for analyzing documents
+    useEffect(() => {
+        const analyzingDocs = documents.some(doc => doc.status === 'analyzing');
+        if (analyzingDocs) {
+            const interval = setInterval(() => {
+                fetchAllDocuments();
+            }, 3000); // Poll every 3 seconds
+            return () => clearInterval(interval);
+        }
+    }, [documents]);
+
     const fetchAllDocuments = async () => {
         try {
             setError(null);

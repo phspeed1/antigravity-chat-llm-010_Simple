@@ -1,6 +1,6 @@
 import os
 import uuid
-import tiktoken
+# import tiktoken
 import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends, UploadFile, File
@@ -18,6 +18,10 @@ from fastapi import BackgroundTasks
 import io
 import tempfile
 import pypdf
+from pyzerox import zerox
+import markdown
+from bs4 import BeautifulSoup
+import asyncio
 
 load_dotenv()
 
@@ -71,11 +75,15 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
 # Initialize Pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
 
-# Tokenizer
-encoding = tiktoken.get_encoding("cl100k_base")
+# import tiktoken  <-- Removed due to python 3.13 compatibility
+
+# Tokenizer Fallback
+# encoding = tiktoken.get_encoding("cl100k_base")
 
 def count_tokens(text: str) -> int:
-    return len(encoding.encode(text))
+    # Simple approximation: 1 token ~= 4 chars for English, varying for others.
+    # For now, this is enough to avoid 3.13 dependency issues.
+    return len(text) // 4
 
 class ChatRequest(BaseModel):
     message: str
@@ -96,9 +104,14 @@ def verify_token(authorization: str = Header(None)):
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
+        print("Token Verify Failed: ExpiredSignatureError")
         raise HTTPException(status_code=401, detail="Token Expired")
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
+        print(f"Token Verify Failed: InvalidTokenError - {e}")
         raise HTTPException(status_code=401, detail="Invalid Token")
+    except Exception as e:
+        print(f"Token Verify Failed: Unexpected Error - {e}")
+        raise HTTPException(status_code=401, detail="Token Verification Failed")
 
 @app.post("/sessions")
 async def create_session(request: CreateSessionRequest, user: dict = Depends(verify_token)):
@@ -193,11 +206,20 @@ async def chat(request: ChatRequest, user: dict = Depends(verify_token)):
                 
                 # Perform Search - Retrieve top 4 chunks
                 # We can filter by user_id if we decide to store it in metadata later for privacy
+                
+                # Get query vector for logging purposes
+                query_vector = embeddings.embed_query(request.message)
+                # Truncate vector display for readability (first 5 dims)
+                print(f"Query Vector (first 5 dims): {query_vector[:5]}...")
+
                 retrieved_docs = vectorstore.similarity_search(request.message, k=4)
                 
                 # Retrieve logs
+                print(f"--- Retrieved {len(retrieved_docs)} Chunks ---")
                 for i, doc in enumerate(retrieved_docs):
-                     print(f"Retrieved chunk {i+1}: {doc.metadata.get('filename')}")
+                     print(f"Chunk {i+1} Source: {doc.metadata.get('filename')}")
+                     print(f"Chunk {i+1} Content Preview: {doc.page_content[:150]}...")
+                print("-----------------------------------")
                 
                 if retrieved_docs:
                     context_text = "\n\n".join([d.page_content for d in retrieved_docs])
@@ -355,7 +377,17 @@ async def delete_document(doc_id: str, user: dict = Depends(verify_token)):
         
         doc = doc_res.data[0]
         
-        # 2. Delete from Storage
+        # 2. Delete from Pinecone
+        if PINECONE_INDEX_NAME:
+            try:
+                index = pc.Index(PINECONE_INDEX_NAME)
+                # Delete all vectors where metadata['doc_id'] == doc_id
+                index.delete(filter={"doc_id": doc_id})
+                print(f"Deleted vectors for doc_id: {doc_id}")
+            except Exception as pinecone_err:
+                 print(f"Pinecone delete error (continuing): {pinecone_err}")
+
+        # 3. Delete from Storage
         # storagePath includes "userId/filename" which is the correct path for storage
         try:
             supabase.storage.from_("sb_oath1").remove([doc["storagePath"]])
@@ -363,7 +395,7 @@ async def delete_document(doc_id: str, user: dict = Depends(verify_token)):
              print(f"Storage delete warning: {storage_err}")
              # Continue to delete DB record even if storage fails (or file missing)
         
-        # 3. Delete from DB
+        # 4. Delete from DB
         supabase.table("Document").delete().eq("id", doc_id).execute()
         
         return {"status": "deleted", "id": doc_id}
@@ -374,9 +406,37 @@ async def delete_document(doc_id: str, user: dict = Depends(verify_token)):
         print(f"Error deleting document: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+import fitz  # PyMuPDF
+import base64
+from PIL import Image
+
+# Helper to analyze full page image with GPT-4o-mini and get Markdown
+async def analyze_page_visual(image_bytes):
+    try:
+        encoded_image = base64.b64encode(image_bytes).decode('utf-8')
+        
+        system_prompt = "You are a specialized document conversion AI."
+        user_prompt = """Convert the provided document page image into clean, structured Markdown.
+- Preserve headers, bullet points, and tables.
+- If there are images or charts, describe them in detail within the markdown stream (e.g., '> **Chart**: ...').
+- Do not output any conversational text, only the markdown content.
+"""
+        message = HumanMessage(
+            content=[
+                {"type": "text", "text": user_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}
+            ]
+        )
+        
+        response = await llm.ainvoke([message])
+        return response.content
+    except Exception as e:
+        print(f"Error analyzing page visual: {e}")
+        return ""
+
 async def process_document(doc_id: str, storage_path: str, filename: str):
     try:
-        print(f"Processing document: {doc_id}, {filename}")
+        print(f"Processing document (Visual RAG): {doc_id}, {filename}")
         
         # 1. Update status to analyzing
         supabase.table("Document").update({"status": "analyzing"}).eq("id", doc_id).execute()
@@ -384,34 +444,214 @@ async def process_document(doc_id: str, storage_path: str, filename: str):
         # 2. Download file from Supabase
         file_bytes = supabase.storage.from_("sb_oath1").download(storage_path)
         
-        # 3. Extract Text
-        content_text = ""
+        # 3. Visual Extraction Pipeline
+        texts = []
+        metadatas = []
+        
         file_ext = os.path.splitext(filename)[1].lower()
+        full_text_content = ""
         
         if file_ext == ".pdf":
-            with io.BytesIO(file_bytes) as f:
-                pdf = pypdf.PdfReader(f)
-                for page in pdf.pages:
-                    content_text += page.extract_text() + "\n"
+            # Save bytes to temp file for fitz
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
+
+            # Implement Hybrid Approach: Fitz for Text + OpenAI Vision for Images
+            try:
+                print(f"Starting Hybrid Processing for {filename}...")
+                doc = fitz.open(tmp_path)
+                final_markdown_parts = []
+                
+                # We need a separate OpenAI client for direct API calls
+                # using the same key as the langchain model
+                from openai import OpenAI
+                openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+                for page_num, page in enumerate(doc):
+                    print(f"Processing page {page_num + 1}...")
+                    page_dict = page.get_text("dict")
+                    blocks = page_dict["blocks"]
+                    # Sort blocks by vertical position (top/y0) to ensure correct reading order
+                    # block structure: [x0, y0, x1, y1, ...] or dictionary with "bbox"
+                    # page.get_text("dict") returns blocks with "bbox": (x0, y0, x1, y1)
+                    blocks.sort(key=lambda b: b["bbox"][1])
+
+                    
+                    page_content = []
+
+                    for block in blocks:
+                        # 1. Text Block
+                        if block["type"] == 0:
+                            text_content = ""
+                            for line in block["lines"]:
+                                for span in line["spans"]:
+                                    text_content += span["text"]
+                            if text_content.strip():
+                                print(f"   [Text Block Extracted]: {len(text_content)} chars")
+                                print(f"   Preview: {text_content[:50]}...")
+                                page_content.append(text_content + "\n")
+
+                        # 2. Image Block
+                        elif block["type"] == 1:
+                            print(f"   [Image Block Found] Analyzing with Vision...")
+                            image_bytes = block["image"]
+                            
+                            # Upload to Supabase Storage to get public URL
+                            try:
+                                # Generate unique path
+                                # Using a specific folder for temp images
+                                img_filename = f"temp_vision_{uuid.uuid4()}.png"
+                                img_path = f"temp_images/{img_filename}"
+                                
+                                # Upload
+                                supabase.storage.from_("sb_oath1").upload(
+                                    path=img_path,
+                                    file=image_bytes,
+                                    file_options={"content-type": "image/png"}
+                                )
+                                
+                                # Use Signed URL because bucket might not be Public
+                                # Expires in 60 seconds (enough for OpenAI to download)
+                                signed_url_res = supabase.storage.from_("sb_oath1").create_signed_url(img_path, 60)
+                                
+                                # Check the structure of signed_url_res
+                                # It typically returns a dict: {'signedURL': '...'} or pure string depending on version.
+                                # Let's handle both.
+                                if isinstance(signed_url_res, dict) and 'signedURL' in signed_url_res:
+                                    image_url = signed_url_res['signedURL']
+                                elif isinstance(signed_url_res, str):
+                                    image_url = signed_url_res
+                                else:
+                                    # Fallback
+                                    print(f"   [Warning] Unexpected signed url response: {signed_url_res}")
+                                    image_url = str(signed_url_res)
+
+                                if isinstance(image_url, str):
+                                    image_url = image_url.strip()
+
+
+
+                                
+                                # Call GPT-4o-mini Vision with Structural Inference Prompt
+                                response = openai_client.chat.completions.create(
+                                    model="gpt-4o-mini",
+                                    messages=[
+                                        {
+                                            "role": "system",
+                                            "content": (
+                                                "You are a professional document digitizer. Your mission is to extract tables with 100% completeness, "
+                                                "ensuring no rows are omitted from the bottom of the image."
+                                            )
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": [
+                                                {
+                                                    "type": "text", 
+                                                    "text": (
+                                                        "Extract the table from this image into Markdown by following these structural rules:\n\n"
+                                                        "1. **Full Image Scan**: Process the image from the very top header to the very last row at the bottom (e.g., '10억원 초과'). DO NOT stop until the entire table is transcribed.\n"
+                                                        "2. **Analyze Vertical Alignment**: Determine columns based on strict vertical alignment. "
+                                                        "Do not create new columns unless there is a clear, consistent vertical gap or divider.\n"
+                                                        "3. **Cell Consolidation**: If a single cell contains multiple lines of text (e.g., range values), "
+                                                        "keep them within the same Markdown cell. Use `<br>` for line breaks inside the cell instead of splitting them into new rows or columns.\n"
+                                                        "4. **Literal Transcription**: Transcribe every number, symbol, and word exactly as shown. Do not summarize or omit any data.\n"
+                                                        "5. **No Conversational Filler**: Output ONLY the Markdown table or content.\n\n"
+                                                        "For charts or diagrams, provide a structured nested list."
+                                                        "6. **Row Alignment**: Stacked text within a visual row belongs to the SAME cell. Join them with a space or `<br>` within that single cell. Do not shift them into the next row or a new column.\n"
+                                                        "7. **Output**: Provide ONLY the Markdown table. No headers like 'Here is the table'."
+                                                    )
+                                                },
+                                                {"type": "image_url", "image_url": {"url": image_url}}
+                                            ],
+                                        }
+                                    ],
+                                    max_tokens=2000,
+                                    temperature=0.0,
+                                )
+                                img_markdown = response.choices[0].message.content
+                                print(f"   [Vision Analysis Result]: {len(img_markdown)} chars")
+                                print(f"   Preview: {img_markdown[:50]}...")
+                                page_content.append(f"\n> **Image Analysis**:\n{img_markdown}\n")
+                                
+                                # Cleanup image immediately? Or let policies handle it?
+                                # Ideally delete to save space
+                                supabase.storage.from_("sb_oath1").remove([img_path])
+                                
+                            except Exception as img_err:
+                                print(f"Image processing failed: {img_err}")
+                                # specific error handling if needed
+                    
+                    final_markdown_parts.append("\n".join(page_content))
+
+                doc.close()
+                full_markdown_content = "\n\n---\n\n".join(final_markdown_parts)
+                print(f"Hybrid processing completed. extracted {len(full_markdown_content)} chars.")
+                
+            except Exception as hybrid_err:
+                print(f"Hybrid processing error: {hybrid_err}")
+                raise hybrid_err
+            finally:
+                 if os.path.exists(tmp_path):
+                     try:
+                        os.unlink(tmp_path)
+                     except:
+                        pass
+
         else:
-            # Assume text based
-            content_text = file_bytes.decode("utf-8")
+            # Assume plain text/markdown for non-PDFs
+            full_markdown_content = file_bytes.decode("utf-8")
 
-        if not content_text.strip():
-             raise ValueError("No text extracted from document")
+        if not full_markdown_content.strip():
+             raise ValueError("No content extracted from document")
 
-        # 4. Chunking
+        print("----------------------------------------------------------------")
+        print(" [FINAL MERGED MARKDOWN (Text + Vision)] ")
+        print("----------------------------------------------------------------")
+        print(full_markdown_content)
+        print("----------------------------------------------------------------")
+        print(" [END RAW MARKDOWN] ")
+        print("----------------------------------------------------------------")
+
+        # Convert Markdown to Plain Text (User requested workflow)
+        print("Converting Markdown to Plain Text...")
+        try:
+            html_content = markdown.markdown(full_markdown_content)
+            soup = BeautifulSoup(html_content, "html.parser")
+            full_text_content = soup.get_text()
+            print(f"Text conversion completed. Length: {len(full_text_content)} chars")
+            
+            print("----------------------------------------------------------------")
+            print(" [CONVERTED TEXT CONTENT] ")
+            print("----------------------------------------------------------------")
+            print(full_text_content)
+            print("----------------------------------------------------------------")
+            print(" [END CONVERTED TEXT] ")
+            print("----------------------------------------------------------------")
+
+        except Exception as md_err:
+            print(f"Markdown to text conversion failed: {md_err}")
+            # Fallback to original content
+            full_text_content = full_markdown_content
+
+        # 4. Chunking (Text Optimized as per request)
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
+            chunk_size=1500,
+            chunk_overlap=100,
+            separators=["\n\n", "\n"]
         )
-        texts = text_splitter.split_text(content_text)
+        texts = text_splitter.split_text(full_text_content)
         
         print(f"Split into {len(texts)} chunks")
+        for i, t in enumerate(texts):
+            preview = t[:100].replace('\n', ' ')
+            print(f"Chunk {i+1} Preview: {preview}...")
 
         # 5. Embed & Upsert to Pinecone
-        # We use from_texts which does embedding + upsert
-        metadatas = [{"doc_id": doc_id, "filename": filename, "text": t} for t in texts]
+        metadatas = [{"doc_id": doc_id, "filename": filename, "text": t, "type": "markdown"} for t in texts]
+        
+        print(f"Upserting {len(texts)} chunks to Pinecone...")
         
         PineconeVectorStore.from_texts(
             texts=texts,

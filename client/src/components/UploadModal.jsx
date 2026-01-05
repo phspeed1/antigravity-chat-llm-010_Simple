@@ -98,13 +98,13 @@ export default function UploadModal({ isOpen, onClose }) {
                                     file:rounded-md file:border-0
                                     file:text-sm file:font-semibold
                                     file:bg-indigo-50 file:text-indigo-700
-                                    hover:file:bg-indigo-100"
+                                    hover:file:bg-indigo-100 file:cursor-pointer cursor-pointer"
                             />
                             <button
                                 onClick={handleUpload}
                                 disabled={!file || uploading}
                                 className={`px-4 py-2 bg-indigo-600 text-white rounded-md font-medium text-sm
-                                    ${(!file || uploading) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700'}`}
+                                    ${(!file || uploading) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700 cursor-pointer'}`}
                             >
                                 {uploading ? 'Adding...' : 'Add File'}
                             </button>

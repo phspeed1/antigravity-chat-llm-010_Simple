@@ -96,7 +96,7 @@ export default function Login() {
 
                     <button
                         type="submit"
-                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 cursor-pointer"
                     >
                         {isSignup ? 'Sign Up' : 'Sign In'}
                     </button>
@@ -113,7 +113,7 @@ export default function Login() {
 
                 <button
                     onClick={handleGoogleLogin}
-                    className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mb-6"
+                    className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mb-6 cursor-pointer"
                 >
                     <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="h-5 w-5 mr-2" />
                     Sign in with Google
@@ -122,7 +122,7 @@ export default function Login() {
                 <div className="text-center">
                     <button
                         onClick={() => setIsSignup(!isSignup)}
-                        className="text-sm text-indigo-600 hover:text-indigo-500 font-medium focus:outline-none"
+                        className="text-sm text-indigo-600 hover:text-indigo-500 font-medium focus:outline-none cursor-pointer"
                     >
                         {isSignup ? 'Already have an account? Sign in' : 'Need an account? Sign up'}
                     </button>
