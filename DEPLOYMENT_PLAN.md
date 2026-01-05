@@ -96,19 +96,19 @@ VM 내부에서 실행하는 명령어입니다.
 Docker Compose를 사용하여 모든 서비스를 빌드하고 백그라운드에서 실행합니다.
 
 ```bash
-sudo docker-compose up -d --build
+sudo docker compose up -d --build
 ```
 
 ### 단계 5: 작동 확인
 브라우저 주소창에 `http://34.64.150.15` 를 입력하여 접속되는지 확인합니다.
 
 ## 5. 유지보수 및 모니터링
--   **로그 확인**: `sudo docker-compose logs -f`
--   **서비스 재시작**: `sudo docker-compose restart`
+-   **로그 확인**: `sudo docker compose logs -f`
+-   **서비스 재시작**: `sudo docker compose restart`
 -   **코드 업데이트 후 재배포**:
     ```bash
     git pull
-    sudo docker-compose up -d --build
+    sudo docker compose up -d --build
     ```
 -   **디스크 정리**: 배포가 반복되면 미사용 이미지가 쌓일 수 있습니다.
     ```bash

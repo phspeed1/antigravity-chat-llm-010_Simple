@@ -1,7 +1,7 @@
 services:
   # 1. Frontend Client (React + Nginx)
   client:
-    build:
+    build: 
       context: ./client
       dockerfile: Dockerfile
     ports:
@@ -15,14 +15,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    # Read .env from sub-directory directly
     env_file:
       - ./server/.env
-    environment:
-      - PORT=3000
-      - DATABASE_URL=${DATABASE_URL}
-      - JWT_SECRET=${JWT_SECRET} # Ensure this matches
-      - SESSION_SECRET=${SESSION_SECRET}
-      - CLIENT_URL=http://localhost # Update to real domain in Prod
     restart: always
 
   # 3. Python LLM Service
@@ -32,10 +27,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    # Read .env from sub-directory directly
     env_file:
       - ./llm_service/.env
-    environment:
-      - PORT=8000
-      - ALLOWED_ORIGINS=http://localhost,http://client # Update for docker network
-      - JWT_SECRET=${JWT_SECRET} # Must match Server's SESSION_SECRET
     restart: always
