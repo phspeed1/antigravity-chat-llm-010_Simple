@@ -6,6 +6,9 @@ export default function UploadModal({ isOpen, onClose }) {
     const [documents, setDocuments] = useState([]);
     const [message, setMessage] = useState('');
     const fileInputRef = useRef(null);
+    const API_BASE_URL = window.location.hostname === 'localhost'
+        ? 'http://localhost:8000'
+        : '/llm';
 
     useEffect(() => {
         if (isOpen) {
@@ -18,7 +21,7 @@ export default function UploadModal({ isOpen, onClose }) {
     const fetchDocuments = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/documents', {
+            const res = await fetch(`${API_BASE_URL}/documents`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -47,7 +50,7 @@ export default function UploadModal({ isOpen, onClose }) {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/documents/upload', {
+            const res = await fetch(`${API_BASE_URL}/documents/upload`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
