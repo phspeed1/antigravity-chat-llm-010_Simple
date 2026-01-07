@@ -8,6 +8,10 @@ export default function Materials() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const API_BASE_URL = window.location.hostname === 'localhost'
+        ? 'http://localhost:8000'
+        : '/llm';
+
     useEffect(() => {
         fetchAllDocuments();
     }, []);
@@ -27,7 +31,7 @@ export default function Materials() {
         try {
             setError(null);
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/documents/all', {
+            const res = await fetch(`${API_BASE_URL}/documents/all`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -49,7 +53,7 @@ export default function Materials() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/documents/${docId}`, {
+            const res = await fetch(`${API_BASE_URL}/documents/${docId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -75,7 +79,7 @@ export default function Materials() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/documents/${docId}/analyze`, {
+            const res = await fetch(`${API_BASE_URL}/documents/${docId}/analyze`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
