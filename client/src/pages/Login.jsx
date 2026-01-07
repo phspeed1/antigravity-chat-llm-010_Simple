@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../AuthContext';
 
 export default function Login() {
@@ -10,6 +10,23 @@ export default function Login() {
         name: ''
     });
     const [error, setError] = useState('');
+    const [userCount, setUserCount] = useState(null);
+
+    useEffect(() => {
+        const fetchStats = async () => {
+            try {
+                const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '/api';
+                const res = await fetch(`${API_BASE_URL}/auth/stats`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setUserCount(data.userCount);
+                }
+            } catch (err) {
+                console.error("Failed to fetch stats", err);
+            }
+        };
+        fetchStats();
+    }, []);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -56,7 +73,7 @@ export default function Login() {
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
             <div className="w-full max-w-md bg-white rounded-lg shadow-md p-8">
                 <h1 className="text-2xl font-bold mb-6 text-center text-gray-800">
-                    {isSignup ? 'Create Account' : 'Welcome Back'}
+                    {isSignup ? 'Create Account' : `Welcome ${userCount !== null ? userCount : ''}`}
                 </h1>
 
                 {error && (

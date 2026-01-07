@@ -103,6 +103,17 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// Public stats endpoint
+router.get('/stats', async (req, res) => {
+    try {
+        const count = await prisma.user.count();
+        res.json({ userCount: count });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Could not fetch stats' });
+    }
+});
+
 router.get('/me', (req, res) => {
     // Middleware should check token
     // Implementing inline for simplicity first, or move to middleware
