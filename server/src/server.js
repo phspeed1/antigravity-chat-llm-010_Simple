@@ -3,12 +3,15 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const passport = require('passport');
 const session = require('express-session');
+const cron = require('node-cron');
+const { PrismaClient } = require('@prisma/client');
 require('./passport'); // Import Passport Config
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const prisma = new PrismaClient();
 
 // Trust Proxy (Required for secure cookies behind Nginx)
 app.set('trust proxy', 1);
@@ -41,6 +44,17 @@ app.get('/', (req, res) => {
 // Routes
 const authRoutes = require('./auth');
 app.use('/auth', authRoutes);
+
+// Supabase Keep-Alive Cron Job (Runs every day at midnight)
+cron.schedule('0 0 * * *', async () => {
+    try {
+        console.log('Running Supabase Keep-Alive...');
+        await prisma.$queryRaw`SELECT 1`;
+        console.log('Supabase Keep-Alive successful');
+    } catch (error) {
+        console.error('Supabase Keep-Alive failed:', error);
+    }
+});
 
 // Start Server
 app.listen(PORT, () => {

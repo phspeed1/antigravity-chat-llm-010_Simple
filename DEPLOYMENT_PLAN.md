@@ -105,10 +105,11 @@ sudo docker compose up -d --build
 ## 5. 유지보수 및 모니터링
 -   **로그 확인**: `sudo docker compose logs -f`
 -   **서비스 재시작**: `sudo docker compose restart`
--   **코드 업데이트 후 재배포**:
+-   **코드 업데이트 후 재배포** (권장 명령어):
     ```bash
     git pull
-    sudo docker compose up -d --build
+    # 중요: 백엔드 컨테이너 IP 변경 시 Nginx가 인식하도록 Nginx도 재시작해야 502 에러를 방지할 수 있습니다.
+    sudo docker compose up -d --build && sudo docker compose restart nginx
     ```
 -   **디스크 정리**: 배포가 반복되면 미사용 이미지가 쌓일 수 있습니다.
     ```bash
