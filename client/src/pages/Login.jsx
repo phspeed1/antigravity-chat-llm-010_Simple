@@ -18,7 +18,7 @@ export default function Login() {
     const handleGoogleLogin = () => {
         const API_BASE_URL = window.location.hostname === 'localhost'
             ? 'http://localhost:3000'
-            : `http://${window.location.hostname}:3000`;
+            : '/api';
         window.location.href = `${API_BASE_URL}/auth/google`;
     };
 
@@ -31,7 +31,7 @@ export default function Login() {
             // Determine API URL based on current location
             const API_BASE_URL = window.location.hostname === 'localhost'
                 ? 'http://localhost:3000'
-                : `http://${window.location.hostname}:3000`;
+                : '/api';
 
             const res = await fetch(`${API_BASE_URL}/auth${endpoint}`, {
                 method: 'POST',

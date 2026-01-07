@@ -23,7 +23,7 @@ export function AuthProvider({ children }) {
             if (token) {
                 const API_BASE_URL = window.location.hostname === 'localhost'
                     ? 'http://localhost:3000'
-                    : `http://${window.location.hostname}:3000`;
+                    : '/api';
 
                 const res = await fetch(`${API_BASE_URL}/auth/me`, {
                     headers: { 'Authorization': `Bearer ${token}` }
