@@ -5,6 +5,7 @@ const passport = require('passport');
 const session = require('express-session');
 const cron = require('node-cron');
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 const { PrismaClient } = require('@prisma/client');
 require('./passport'); // Import Passport Config
 
@@ -16,6 +17,21 @@ const prisma = new PrismaClient();
 
 // Trust Proxy (Required for secure cookies behind Nginx)
 app.set('trust proxy', 1);
+
+// Rate Limit 규칙 정의 (글로벌 트래픽 방어)
+const apiLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,    // 1분 기준
+    max: 20,                    // 1분 동안 한 IP당 최대 20번만 요청 허용
+    message: {
+        status: 429,
+        error: "너무 잦은 요청이 감지되었습니다. 1분 후 다시 시도해 주세요."
+    },
+    standardHeaders: true,      // 응답 헤더에 RateLimit-Limit, Remaining 등 표시
+    legacyHeaders: false,       // X-RateLimit-* 헤더는 사용 안 함
+});
+
+// 모든 API 요청에 속도 제한 적용 (Nginx가 /api/ 접두사를 제거하므로 글로벌로 설정)
+app.use(apiLimiter);
 
 // Middleware
 app.use(cors({
